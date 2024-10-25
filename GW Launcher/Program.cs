@@ -2,9 +2,12 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Extensions;
+using System.IO;
+using GW_Launcher.Classes;
 using GW_Launcher.Forms;
 using GW_Launcher.Guildwars;
 using Octokit;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.ListView;
 using Account = GW_Launcher.Classes.Account;
 using Application = System.Windows.Forms.Application;
 using FileMode = System.IO.FileMode;
@@ -27,7 +30,10 @@ internal static class Program
 
     private static Queue<int> needtolaunch = new Queue<int>();
 
-    private static string command_arg_launch_account_name = "";
+    private static string command_arg_gwpath = "";
+    private static string command_arg_email = "";
+    private static string command_arg_password = "";
+    private static string command_arg_character = "";
 
     [DllImport("user32.dll", EntryPoint = "SetWindowText", CharSet = CharSet.Unicode)]
     private static extern bool SetWindowText(IntPtr hwnd, string lpString);
@@ -105,7 +111,11 @@ internal static class Program
     private static string? LaunchAccount(int account_index)
     {
         var account = accounts[account_index];
-        mainForm?.SetAccountState(account_index, "Launching");
+        return LaunchAccount(account);
+    }
+
+    private static string? LaunchAccount(Account account)
+    {
         GWCAMemory? memory = null;
         if (!File.Exists(account.gwpath))
             return "Path to the Guild Wars executable incorrect, aborting launch.";
@@ -172,13 +182,14 @@ internal static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
-        if (!ParseCommandLineArgs())
+        int cmdLineMode = ParseCommandLineArgs();
+        if (cmdLineMode == -1)
         {
             Exit();
             return; // Error message already displayed
         }
 
-        if (!LoadAccountsJson())
+        if (cmdLineMode == 0 && !LoadAccountsJson())
         {
             Exit();
             return; // Error message already displayed
@@ -193,14 +204,19 @@ internal static class Program
 
         settings.Save();
 
-        if (command_arg_launch_account_name.Length > 0)
+        if (cmdLineMode == 1)
         {
-            var res = LaunchAccount(command_arg_launch_account_name);
+            Account account = new Account();
+            account.gwpath = command_arg_gwpath;
+            account.email = command_arg_email;
+            account.password = command_arg_password;
+            account.title = command_arg_character;
+            account.character = command_arg_character;
+            var res = LaunchAccount(account);
             if (res != null)
             {
-                MessageBox.Show(@"Failed to launch account " + command_arg_launch_account_name + "\n" + res);
+                MessageBox.Show(@"Failed to launch account " + command_arg_character + "\n" + res);
             }
-
             Exit();
             return;
         }
@@ -289,27 +305,61 @@ internal static class Program
         }
     }
 
-    private static bool ParseCommandLineArgs()
+    private static int ParseCommandLineArgs()
     {
         var args = Environment.GetCommandLineArgs();
+        
         for (var i = 1; i < args.Length; i++)
         {
             switch (args[i])
             {
-                case "-launch":
+                case "-gwpath":
                     i++;
                     if (i >= args.Length)
                     {
-                        MessageBox.Show(@"No value for command line argument -launch");
-                        return false;
+                        MessageBox.Show(@"No value for command line argument -gwpath");
+                        return -1;
                     }
+                    command_arg_gwpath = args[i];
+                    break;
+                case "-email":
+                    i++;
+                    if (i >= args.Length)
+                    {
+                        MessageBox.Show(@"No value for command line argument -email");
+                        return -1;
+                    }
+                    command_arg_email = args[i];
+                    break;
 
-                    command_arg_launch_account_name = args[i];
+                case "-password":
+                    i++;
+                    if (i >= args.Length)
+                    {
+                        MessageBox.Show(@"No value for command line argument -password");
+                        return -1;
+                    }
+                    command_arg_password = args[i];
+                    break;
+
+                case "-character":
+                    i++;
+                    if (i >= args.Length)
+                    {
+                        MessageBox.Show(@"No value for command line argument -character");
+                        return -1;
+                    }
+                    command_arg_character = args[i];
                     break;
             }
         }
-
-        return true;
+        if (command_arg_gwpath.Length > 0 && command_arg_email.Length > 0 && command_arg_password.Length > 0 && command_arg_character.Length > 0)
+        {
+            return 1;
+        } else
+        {
+            return 0;
+        }
     }
 
     private static bool InitialiseGWLauncherMutex()
